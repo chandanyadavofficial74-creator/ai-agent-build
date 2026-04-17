@@ -1,0 +1,261 @@
+import streamlit as st
+import requests
+import json
+import time
+from datetime import datetime, timedelta
+
+st.set_page_config(page_title="AI Agent Builder - VIP", page_icon="👑")
+
+# ========== DATABASE SETUP ==========
+if "users" not in st.session_state:
+    st.session_state.users = {}
+if "current_user" not in st.session_state:
+    st.session_state.current_user = None
+
+# ========== CREATOR EMAIL ==========
+CREATOR_EMAIL = "ChandanYadavofficial74@gmail.com"
+
+# ========== UPI ID ==========
+UPI_ID = "chandanyadavofficial74@okicici"
+
+# ========== FUNCTIONS ==========
+def get_user_data(email):
+    if email not in st.session_state.users:
+        st.session_state.users[email] = {
+            "agents_used": 0,
+            "is_premium": False,
+            "expiry": None,
+            "is_creator": (email == CREATOR_EMAIL)
+        }
+        if email == CREATOR_EMAIL:
+            st.session_state.users[email]["is_premium"] = True
+            st.session_state.users[email]["is_creator"] = True
+    return st.session_state.users[email]
+
+def can_create_agent(email):
+    user = get_user_data(email)
+    
+    if user["is_creator"]:
+        return True, "creator"
+    
+    if user["is_premium"]:
+        if user["expiry"] and datetime.now() > user["expiry"]:
+            user["is_premium"] = False
+            return False, "premium_expired"
+        return True, "premium"
+    
+    if user["agents_used"] < 3:
+        return True, "free"
+    else:
+        return False, "free_limit"
+
+def increment_agent(email):
+    user = get_user_data(email)
+    if not user["is_premium"] and not user["is_creator"]:
+        user["agents_used"] += 1
+
+def activate_premium(email, days=30):
+    user = get_user_data(email)
+    user["is_premium"] = True
+    user["expiry"] = datetime.now() + timedelta(days=days)
+    return True
+
+# ========== LOGIN ==========
+st.sidebar.title("👤 Account")
+email = st.sidebar.text_input("Email ID", placeholder="you@example.com")
+
+if email:
+    st.session_state.current_user = email
+    user_data = get_user_data(email)
+    
+    st.sidebar.markdown("---")
+    if user_data["is_creator"]:
+        st.sidebar.success("👑 VIP CREATOR - Unlimited")
+    elif user_data["is_premium"]:
+        days_left = (user_data["expiry"] - datetime.now()).days
+        st.sidebar.success(f"💎 Premium User - {days_left} days left")
+    else:
+        agents_left = 3 - user_data["agents_used"]
+        st.sidebar.warning(f"🆓 Free User - {agents_left}/3 left")
+    
+    if st.sidebar.button("🚪 Logout"):
+        st.session_state.current_user = None
+        st.rerun()
+else:
+    st.sidebar.info("👆 Enter email to start")
+    st.stop()
+
+# ========== PREMIUM UPGRADE ==========
+def show_upgrade_section():
+    st.markdown("---")
+    st.subheader("🚀 Upgrade to Premium - ₹99/month")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Free", "3 agents")
+    with col2:
+        st.metric("Premium", "Unlimited")
+    with col3:
+        st.metric("Price", "₹99/month")
+    
+    st.markdown(f"""
+    ### 📱 Pay to this UPI ID:
+    # `{UPI_ID}`
+    
+    **Amount:** ₹99
+    
+    **Steps:**
+    1. Open Google Pay / PhonePe / Paytm
+    2. Pay ₹99 to above UPI ID
+    3. Click below button to activate premium
+    """)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("✅ I HAVE PAID - Activate Premium", use_container_width=True):
+            activate_premium(email)
+            st.balloons()
+            st.success("🎉 **PREMIUM ACTIVATED!** 🎉")
+            st.info("🔄 Refresh the page to see changes")
+            time.sleep(2)
+            st.rerun()
+    
+    with col2:
+        if st.button("🎁 3 Days Free Trial", use_container_width=True):
+            activate_premium(email, days=3)
+            st.balloons()
+            st.success("🎉 3-day free trial activated!")
+            st.rerun()
+
+# ========== CHECK LIMIT ==========
+can_create, reason = can_create_agent(email)
+
+if not can_create:
+    if reason == "free_limit":
+        st.error("❌ Free limit reached! (3/3 agents used)")
+        show_upgrade_section()
+    elif reason == "premium_expired":
+        st.error("❌ Premium expired! Please renew.")
+        show_upgrade_section()
+    st.stop()
+
+# ========== MAIN APP ==========
+st.title("👑 AI Agent Builder")
+
+if user_data["is_creator"]:
+    st.markdown("🎖️ **VIP CREATOR** — Unlimited agents for life!")
+elif user_data["is_premium"]:
+    days_left = (user_data["expiry"] - datetime.now()).days
+    st.markdown(f"💎 **Premium Active** — Unlimited! ({days_left} days left)")
+else:
+    agents_left = 3 - user_data["agents_used"]
+    st.markdown(f"🆓 **Free Tier** — {agents_left}/3 agents left")
+
+st.markdown("### ✨ Kuch bhi likho — AI agent ban jayega!")
+
+# ========== AGENT FORM ==========
+topic = st.text_area(
+    "📝 Describe your agent:",
+    height=100,
+    placeholder="Example: Stock market advisor, Fitness trainer, Customer support"
+)
+
+col1, col2 = st.columns(2)
+with col1:
+    language = st.selectbox("🌐 Language:", ["Hinglish", "Hindi", "English"])
+with col2:
+    personality = st.selectbox("🎭 Personality:", ["Professional", "Friendly", "Funny"])
+
+st.markdown("🔑 **Get free API key:** https://aistudio.google.com/apikey")
+api_key = st.text_input("Google API Key", type="password")
+
+# ========== GENERATE BUTTON ==========
+if st.button("🚀 GENERATE AI AGENT 🚀", use_container_width=True):
+    if not api_key:
+        st.error("❌ Please enter API key!")
+    elif not topic:
+        st.error("❌ Please describe your agent!")
+    else:
+        if not user_data["is_premium"] and not user_data["is_creator"]:
+            increment_agent(email)
+        
+        with st.spinner("🤖 Creating your AI agent..."):
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+                
+                prompt = f"""You are an AI agent.
+Topic: {topic}
+Personality: {personality}
+Language: {language}
+
+Introduce yourself in 2-3 lines. Be engaging."""
+                
+                payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                response = requests.post(url, json=payload, timeout=30)
+                data = response.json()
+                
+                if "candidates" in data:
+                    agent_intro = data["candidates"][0]["content"]["parts"][0]["text"]
+                    
+                    st.balloons()
+                    st.success("✅ AI Agent Created!")
+                    
+                    st.markdown(f"""
+                    <div style="background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 20px; border-radius: 15px;">
+                        <h3>🤖 Your AI Agent</h3>
+                        <p>{agent_intro}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Live chat
+                    st.subheader("💬 Chat with your agent")
+                    user_msg = st.text_input("Ask something:", placeholder="Namaste! Kaise ho?")
+                    
+                    if user_msg:
+                        with st.spinner("Agent is thinking..."):
+                            chat_prompt = f"Topic: {topic}. Personality: {personality}. Language: {language}. User: {user_msg}. Reply briefly."
+                            chat_payload = {"contents": [{"parts": [{"text": chat_prompt}]}]}
+                            chat_response = requests.post(url, json=chat_payload, timeout=30)
+                            chat_data = chat_response.json()
+                            if "candidates" in chat_data:
+                                st.success(f"🤖 **Agent:** {chat_data['candidates'][0]['content']['parts'][0]['text']}")
+                    
+                    # Download code (premium/creator only)
+                    if user_data["is_premium"] or user_data["is_creator"]:
+                        code = f'''# 🤖 AI Agent Code - {topic}
+
+import requests
+
+API_KEY = "YOUR_GEMINI_API_KEY"
+TOPIC = "{topic}"
+PERSONALITY = "{personality}"
+LANGUAGE = "{language}"
+
+def chat_with_agent(user_message):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={{API_KEY}}"
+    prompt = f"Topic: {{TOPIC}}. Personality: {{PERSONALITY}}. Language: {{LANGUAGE}}. User: {{user_message}}"
+    payload = {{"contents": [{{"parts": [{{"text": prompt}}]}}]}}
+    response = requests.post(url, json=payload)
+    return response.json()["candidates"][0]["content"]["parts"][0]["text"]
+
+# Test your agent
+if __name__ == "__main__":
+    print("🤖 Agent ready!")
+    print(chat_with_agent("Namaste! Kaise ho?"))
+'''
+                        st.download_button("📥 Download Agent Code", code, "my_agent.py", use_container_width=True)
+                    else:
+                        st.info("🔒 **Upgrade to premium to download code!**")
+                        
+                else:
+                    error_msg = data.get('error', {}).get('message', 'Unknown error')
+                    st.error(f"Error: {error_msg}")
+                    
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+
+# ========== UPGRADE SECTION ==========
+if not user_data["is_premium"] and not user_data["is_creator"]:
+    show_upgrade_section()
+
+st.caption("👑 Creator: Unlimited | 💎 Premium: ₹99/month | 🆓 Free: 3 agents")
