@@ -3,6 +3,7 @@ import requests
 import json
 import time
 from datetime import datetime, timedelta
+import webbrowser
 
 st.set_page_config(page_title="AI Agent Builder - VIP", page_icon="👑")
 
@@ -25,11 +26,13 @@ def get_user_data(email):
             "agents_used": 0,
             "is_premium": False,
             "expiry": None,
-            "is_creator": (email == CREATOR_EMAIL)
+            "is_creator": (email == CREATOR_EMAIL),
+            "payment_verified": False
         }
         if email == CREATOR_EMAIL:
             st.session_state.users[email]["is_premium"] = True
             st.session_state.users[email]["is_creator"] = True
+            st.session_state.users[email]["payment_verified"] = True
     return st.session_state.users[email]
 
 def can_create_agent(email):
@@ -98,27 +101,35 @@ def show_upgrade_section():
     with col3:
         st.metric("Price", "₹99/month")
     
+    # 🔥 CLICKABLE UPI LINK 🔥
+    upi_link = f"upi://pay?pa={UPI_ID}&pn=AI%20Agent%20Builder&am=99&cu=INR"
+    
     st.markdown(f"""
-    ### 📱 Pay to this UPI ID:
-    # `{UPI_ID}`
-    
-    **Amount:** ₹99
-    
-    **Steps:**
-    1. Open Google Pay / PhonePe / Paytm
-    2. Pay ₹99 to above UPI ID
-    3. Click below button to activate premium
+    ### 📱 Click below to pay ₹99:
     """)
+    
+    # Payment button
+    if st.button("💳 PAY NOW - ₹99 (Click to Pay)", use_container_width=True):
+        webbrowser.open(upi_link)
+        st.info("📱 UPI app open ho jayega. Payment complete karne ke baad neeche 'Verify Payment' click karein.")
+    
+    st.markdown("---")
+    st.markdown("### ✅ After Payment:")
+    
+    # Transaction ID input
+    transaction_id = st.text_input("Enter Transaction ID / UTR Number:", placeholder="e.g., 1234567890")
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("✅ I HAVE PAID - Activate Premium", use_container_width=True):
-            activate_premium(email)
-            st.balloons()
-            st.success("🎉 **PREMIUM ACTIVATED!** 🎉")
-            st.info("🔄 Refresh the page to see changes")
-            time.sleep(2)
-            st.rerun()
+        if st.button("✅ Verify Payment & Activate", use_container_width=True):
+            if transaction_id:
+                # In production, verify with bank API
+                # For now, manual verification message
+                st.warning("⏳ Payment verification in progress...")
+                st.info("📧 Please email transaction screenshot to: premium@aiwrapper.com for instant activation")
+                st.info("Or contact WhatsApp: +91 XXXXXXXXXX")
+            else:
+                st.error("❌ Please enter Transaction ID")
     
     with col2:
         if st.button("🎁 3 Days Free Trial", use_container_width=True):
@@ -126,6 +137,8 @@ def show_upgrade_section():
             st.balloons()
             st.success("🎉 3-day free trial activated!")
             st.rerun()
+    
+    st.caption("💡 After UPI payment, email transaction ID to activate premium instantly.")
 
 # ========== CHECK LIMIT ==========
 can_create, reason = can_create_agent(email)
@@ -238,10 +251,7 @@ def chat_with_agent(user_message):
     response = requests.post(url, json=payload)
     return response.json()["candidates"][0]["content"]["parts"][0]["text"]
 
-# Test your agent
-if __name__ == "__main__":
-    print("🤖 Agent ready!")
-    print(chat_with_agent("Namaste! Kaise ho?"))
+print(chat_with_agent("Namaste"))
 '''
                         st.download_button("📥 Download Agent Code", code, "my_agent.py", use_container_width=True)
                     else:
