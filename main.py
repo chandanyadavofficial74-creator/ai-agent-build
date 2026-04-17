@@ -3,23 +3,22 @@ import requests
 import json
 import time
 from datetime import datetime, timedelta
-import webbrowser
 
 st.set_page_config(page_title="AI Agent Builder - VIP", page_icon="👑")
 
-# ========== DATABASE SETUP ==========
+# ========== DATABASE ==========
 if "users" not in st.session_state:
     st.session_state.users = {}
 if "current_user" not in st.session_state:
     st.session_state.current_user = None
 
-# ========== CREATOR EMAIL ==========
-CREATOR_EMAIL = "ChandanYadavofficial74@gmail.com"
+# 🔥 GLOBAL STORE FOR USED UTR NUMBERS 🔥
+if "used_utr_numbers" not in st.session_state:
+    st.session_state.used_utr_numbers = []
 
-# ========== UPI ID ==========
+CREATOR_EMAIL = "ChandanYadavofficial74@gmail.com"
 UPI_ID = "chandanyadavofficial74@okicici"
 
-# ========== FUNCTIONS ==========
 def get_user_data(email):
     if email not in st.session_state.users:
         st.session_state.users[email] = {
@@ -27,6 +26,7 @@ def get_user_data(email):
             "is_premium": False,
             "expiry": None,
             "is_creator": (email == CREATOR_EMAIL),
+            "transaction_id": None,
             "payment_verified": False
         }
         if email == CREATOR_EMAIL:
@@ -37,59 +37,57 @@ def get_user_data(email):
 
 def can_create_agent(email):
     user = get_user_data(email)
-    
     if user["is_creator"]:
         return True, "creator"
-    
     if user["is_premium"]:
         if user["expiry"] and datetime.now() > user["expiry"]:
             user["is_premium"] = False
             return False, "premium_expired"
         return True, "premium"
-    
     if user["agents_used"] < 3:
         return True, "free"
-    else:
-        return False, "free_limit"
+    return False, "free_limit"
 
 def increment_agent(email):
     user = get_user_data(email)
     if not user["is_premium"] and not user["is_creator"]:
         user["agents_used"] += 1
 
-def activate_premium(email, days=30):
+def activate_premium(email, days=30, transaction_id=None):
     user = get_user_data(email)
     user["is_premium"] = True
     user["expiry"] = datetime.now() + timedelta(days=days)
-    return True
+    user["payment_verified"] = True
+    if transaction_id:
+        user["transaction_id"] = transaction_id
+
+def is_utr_used(utr_number):
+    return utr_number in st.session_state.used_utr_numbers
+
+def mark_utr_as_used(utr_number):
+    st.session_state.used_utr_numbers.append(utr_number)
 
 # ========== LOGIN ==========
 st.sidebar.title("👤 Account")
-email = st.sidebar.text_input("Email ID", placeholder="you@example.com")
+email = st.sidebar.text_input("Email ID")
 
 if email:
-    st.session_state.current_user = email
     user_data = get_user_data(email)
-    
     st.sidebar.markdown("---")
     if user_data["is_creator"]:
         st.sidebar.success("👑 VIP CREATOR - Unlimited")
     elif user_data["is_premium"]:
         days_left = (user_data["expiry"] - datetime.now()).days
-        st.sidebar.success(f"💎 Premium User - {days_left} days left")
+        st.sidebar.success(f"💎 Premium - {days_left} days left")
     else:
         agents_left = 3 - user_data["agents_used"]
-        st.sidebar.warning(f"🆓 Free User - {agents_left}/3 left")
-    
-    if st.sidebar.button("🚪 Logout"):
-        st.session_state.current_user = None
-        st.rerun()
+        st.sidebar.warning(f"🆓 Free - {agents_left}/3 left")
 else:
-    st.sidebar.info("👆 Enter email to start")
+    st.sidebar.info("👆 Enter email")
     st.stop()
 
-# ========== PREMIUM UPGRADE ==========
-def show_upgrade_section():
+# ========== PREMIUM UPGRADE SECTION ==========
+def show_upgrade():
     st.markdown("---")
     st.subheader("🚀 Upgrade to Premium - ₹99/month")
     
@@ -101,55 +99,50 @@ def show_upgrade_section():
     with col3:
         st.metric("Price", "₹99/month")
     
-    # 🔥 CLICKABLE UPI LINK 🔥
-    upi_link = f"upi://pay?pa={UPI_ID}&pn=AI%20Agent%20Builder&am=99&cu=INR"
-    
     st.markdown(f"""
-    ### 📱 Click below to pay ₹99:
+    ### 📱 Step 1: Pay ₹99 to this UPI ID
+    ```
+    {UPI_ID}
+    ```
     """)
-    
-    # Payment button
-    if st.button("💳 PAY NOW - ₹99 (Click to Pay)", use_container_width=True):
-        webbrowser.open(upi_link)
-        st.info("📱 UPI app open ho jayega. Payment complete karne ke baad neeche 'Verify Payment' click karein.")
+    st.caption("💡 UPI ID copy karne ke liye upar click karein")
     
     st.markdown("---")
-    st.markdown("### ✅ After Payment:")
+    st.markdown("### 📝 Step 2: Enter Transaction ID after Payment")
     
-    # Transaction ID input
-    transaction_id = st.text_input("Enter Transaction ID / UTR Number:", placeholder="e.g., 1234567890")
+    transaction_id = st.text_input("Transaction ID / UTR Number (Required):", placeholder="e.g., 1234567890")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("✅ Verify Payment & Activate", use_container_width=True):
-            if transaction_id:
-                # In production, verify with bank API
-                # For now, manual verification message
-                st.warning("⏳ Payment verification in progress...")
-                st.info("📧 Please email transaction screenshot to: premium@aiwrapper.com for instant activation")
-                st.info("Or contact WhatsApp: +91 XXXXXXXXXX")
-            else:
-                st.error("❌ Please enter Transaction ID")
-    
-    with col2:
-        if st.button("🎁 3 Days Free Trial", use_container_width=True):
-            activate_premium(email, days=3)
+    if st.button("✅ Verify Payment & Activate Premium", use_container_width=True):
+        if not transaction_id:
+            st.error("❌ Please enter Transaction ID / UTR Number first!")
+        elif len(transaction_id) < 3:
+            st.error("❌ Please enter a valid Transaction ID!")
+        elif is_utr_used(transaction_id):
+            st.error("❌ This Transaction ID has already been used!")
+        else:
+            mark_utr_as_used(transaction_id)
+            activate_premium(email, transaction_id=transaction_id)
             st.balloons()
-            st.success("🎉 3-day free trial activated!")
+            st.success("🎉 PREMIUM ACTIVATED SUCCESSFULLY!")
             st.rerun()
     
-    st.caption("💡 After UPI payment, email transaction ID to activate premium instantly.")
+    st.markdown("---")
+    if st.button("🎁 Try 3 Days Free Trial", use_container_width=True):
+        activate_premium(email, days=3)
+        st.balloons()
+        st.success("🎉 3-day free trial activated!")
+        st.rerun()
+    
+    st.caption("🔒 One UTR number can be used only once.")
 
 # ========== CHECK LIMIT ==========
 can_create, reason = can_create_agent(email)
-
 if not can_create:
     if reason == "free_limit":
         st.error("❌ Free limit reached! (3/3 agents used)")
-        show_upgrade_section()
     elif reason == "premium_expired":
         st.error("❌ Premium expired! Please renew.")
-        show_upgrade_section()
+    show_upgrade()
     st.stop()
 
 # ========== MAIN APP ==========
@@ -164,7 +157,7 @@ else:
     agents_left = 3 - user_data["agents_used"]
     st.markdown(f"🆓 **Free Tier** — {agents_left}/3 agents left")
 
-st.markdown("### ✨ Kuch bhi likho — AI agent ban jayega!")
+st.markdown("### ✨ Kuch bhi likho — AI agent ban jayega 5 second mein!")
 
 # ========== AGENT FORM ==========
 topic = st.text_area(
@@ -264,8 +257,8 @@ print(chat_with_agent("Namaste"))
             except Exception as e:
                 st.error(f"Error: {str(e)}")
 
-# ========== UPGRADE SECTION ==========
+# ========== SHOW UPGRADE SECTION FOR FREE USERS ==========
 if not user_data["is_premium"] and not user_data["is_creator"]:
-    show_upgrade_section()
+    show_upgrade()
 
 st.caption("👑 Creator: Unlimited | 💎 Premium: ₹99/month | 🆓 Free: 3 agents")
